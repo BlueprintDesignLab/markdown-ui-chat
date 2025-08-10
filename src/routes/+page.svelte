@@ -118,8 +118,8 @@ Output rules:
 	function initializeOpenAI() {
 		openai = new OpenAI({
 			apiKey: 'dummy-key',
-			baseURL: 'http://localhost:3010',
-			// baseURL: 'https://llm-proxy-735482512776.us-west1.run.app',
+			// baseURL: 'http://localhost:3010',
+			baseURL: 'https://llm-proxy-735482512776.us-west1.run.app',
 			dangerouslyAllowBrowser: true
 		});
 	}
