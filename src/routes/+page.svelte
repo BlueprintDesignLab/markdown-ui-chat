@@ -52,6 +52,7 @@ Supported widgets and their schemas:
 Output rules:
 
 - Use one widget per fenced code block. Only one widget per response.
+- MultiSelect and text input should only be part of Form.
 - Keep all surrounding content as normal Markdown prose outside the widget code fences.
 - Only use the widget types and properties listed above; do not invent new types or props.
 - Keep JSON minimal; omit optional properties unless they add value.
@@ -201,7 +202,7 @@ Output rules:
 		<div class="max-w-4xl mx-auto">
 			<div class="flex items-center justify-between">
 				<h1 class="text-lg sm:text-xl font-semibold text-gray-900 truncate">
-                    Markdown UI Chat
+                    Markdown UI Chat Demo
                 </h1>
 				<button
 					on:click={clearChat}
