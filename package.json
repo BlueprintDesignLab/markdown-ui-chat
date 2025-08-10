@@ -37,8 +37,8 @@
 		"vite": "^7.0.4"
 	},
 	"dependencies": {
-		"@markdown-ui/marked-ext": "1.0.13",
-		"@markdown-ui/svelte": "^0.0.12",
+		"@markdown-ui/marked-ext": "1.0.15",
+		"@markdown-ui/svelte": "^0.0.14",
 		"marked": "^16.1.2",
 		"openai": "^5.12.2"
 	}

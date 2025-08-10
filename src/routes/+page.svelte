@@ -1,5 +1,6 @@
 <script lang="ts">
 	import OpenAI from 'openai';
+	import { onMount, tick } from 'svelte';
 
     import { MarkdownUI } from '@markdown-ui/svelte';
     import '@markdown-ui/svelte/widgets.css'; // Optional styling
@@ -12,11 +13,8 @@
     marked.use(markedUiExtension);
 
     function handleWidgetEvent(detail: any) {
-        console.log('User selected:', detail); 
-
         inputMessage = JSON.stringify(detail.value);
         sendMessage();
-        // Output: {id: "env", value: "prod"}
     }
 
 	interface ChatMessage {
@@ -24,11 +22,13 @@
 		role: 'user' | 'assistant' | 'system';
 		content: string;
 		timestamp: Date;
+		parsedHtml?: string;
 	}
 
     const initSystemMessage = `
-You are an expert demonstrator for markdown-ui. 
-Use every opportunity to show the usefulness of markdown-ui.
+You are an expert sales person for markdown-ui. 
+Use every opportunity to engage the user and make the conversation interesting.
+Always show the usefulness of markdown-ui and include at least 1 widget.
 At the start prefer simple, non text-input widgets as they require less effort for the user.
 If the user has engaged for 3+ turns, show them a simple form widget.
 Your interaction style is always concise. Max 3 sentences.
@@ -59,39 +59,56 @@ Output rules:
 - Do not include comments inside JSON.
 `
 
-	let messages: ChatMessage[] = [{
-        id: crypto.randomUUID(),
-        role: "system",
-        content: initSystemMessage,
-        timestamp: new Date(),
-    }];
-	let inputMessage = '';
-	let isLoading = false;
-	let isStreaming = false;
-	let showSystemMessage = false;
+	let messages = $state<ChatMessage[]>([
+        {
+            id: crypto.randomUUID(),
+            role: "system",
+            content: initSystemMessage,
+            timestamp: new Date(),
+        },
+    ]);
+    
+	let inputMessage = $state('');
+	let isLoading = $state(false);
+	let isStreaming = $state(false);
+	let showSystemMessage = $state(false);
 	let openai: OpenAI;
-	let streamingMessageId = '';
-	let messagesContainer: HTMLDivElement;
+	let streamingMessageId = $state('');
+	let messagesContainer: HTMLDivElement | undefined = $state();
+	let showSuggestions = $state(true);
+	let hasUserInteracted = $state(false);
+
+	// Ensure messages have parsed HTML without creating new objects
+	$effect(() => {
+		messages.forEach((msg) => {
+			if (!msg.parsedHtml) {
+				msg.parsedHtml = marked.parse(msg.content) as string;
+			}
+		});
+	});
 
 	function scrollToBottom() {
 		if (messagesContainer) {
-			requestAnimationFrame(() => {
-				messagesContainer.scrollTop = messagesContainer.scrollHeight;
+			tick().then(() => {
+                // console.log("scrolling", {
+                //     scrollHeight: messagesContainer!.scrollHeight,
+                //     offsetHeight: messagesContainer!.offsetHeight,
+                //     scrollTop: messagesContainer!.scrollTop
+                // });
+				messagesContainer!.scrollTo({
+					top: messagesContainer!.scrollHeight,
+					behavior: 'smooth'
+				});
 			});
 		}
 	}
 
-	// Autoscroll when messages change or during streaming
-	$: if (messages.length > 0 || isStreaming) {
-		scrollToBottom();
-	}
-
 	function updateSystemMessage(content: string) {
-		messages = messages.map(msg => 
-			msg.role === 'system' 
-				? { ...msg, content }
-				: msg
-		);
+		const systemMsg = messages.find(msg => msg.role === 'system');
+		if (systemMsg) {
+			systemMsg.content = content;
+			systemMsg.parsedHtml = undefined; // Clear cache to force re-parse
+		}
 	}
 
 	function getSystemMessage(): string {
@@ -101,14 +118,19 @@ Output rules:
 	function initializeOpenAI() {
 		openai = new OpenAI({
 			apiKey: 'dummy-key',
-			// baseURL: 'http://localhost:3010',
-			baseURL: 'https://llm-proxy-735482512776.us-west1.run.app',
+			baseURL: 'http://localhost:3010',
+			// baseURL: 'https://llm-proxy-735482512776.us-west1.run.app',
 			dangerouslyAllowBrowser: true
 		});
 	}
 
 	async function sendMessage() {
 		if (!inputMessage.trim() || isLoading || isStreaming) return;
+
+		if (!hasUserInteracted) {
+			hasUserInteracted = true;
+			showSuggestions = false;
+		}
 
 		const userMessage: ChatMessage = {
 			id: crypto.randomUUID(),
@@ -117,9 +139,10 @@ Output rules:
 			timestamp: new Date()
 		};
 
-		messages = [...messages, userMessage];
+		messages.push(userMessage);
 		inputMessage = '';
 		isLoading = true;
+		scrollToBottom();
 
 		// Create a placeholder message for the streaming response
 		const assistantMessageId = crypto.randomUUID();
@@ -130,10 +153,11 @@ Output rules:
 			timestamp: new Date()
 		};
 
-		messages = [...messages, assistantMessage];
+		messages.push(assistantMessage);
 		streamingMessageId = assistantMessageId;
 		isLoading = false;
 		isStreaming = true;
+		scrollToBottom();
 
 		try {
 			const stream = await openai.chat.completions.create({
@@ -151,13 +175,14 @@ Output rules:
 				const delta = chunk.choices[0]?.delta?.content || '';
 				if (delta) {
 					streamedContent += delta;
+                    scrollToBottom();
 					
 					// Update the message in the messages array
-					messages = messages.map(msg => 
-						msg.id === assistantMessageId 
-							? { ...msg, content: streamedContent }
-							: msg
-					);
+					const streamingMsg = messages.find(msg => msg.id === assistantMessageId);
+					if (streamingMsg) {
+						streamingMsg.content = streamedContent;
+						streamingMsg.parsedHtml = undefined; // Clear cache to force re-parse during streaming
+					}
 				}
 			}
 
@@ -166,11 +191,11 @@ Output rules:
 			const errorContent = `Error: ${error instanceof Error ? error.message : 'Failed to send message'}`;
 			
 			// Update the streaming message with error content
-			messages = messages.map(msg => 
-				msg.id === assistantMessageId 
-					? { ...msg, content: errorContent }
-					: msg
-			);
+			const errorMsg = messages.find(msg => msg.id === assistantMessageId);
+			if (errorMsg) {
+				errorMsg.content = errorContent;
+				errorMsg.parsedHtml = undefined; // Clear cache
+			}
 		} finally {
 			isStreaming = false;
 			streamingMessageId = '';
@@ -186,17 +211,28 @@ Output rules:
 
 
 	function clearChat() {
-		messages = messages.filter(m => m.role === 'system');
+		// Remove non-system messages by mutating the array
+		for (let i = messages.length - 1; i >= 0; i--) {
+			if (messages[i].role !== 'system') {
+				messages.splice(i, 1);
+			}
+		}
+		showSuggestions = true;
+		hasUserInteracted = false;
+	}
+
+	function handleSuggestionClick(suggestion: string) {
+		inputMessage = suggestion;
+		sendMessage();
 	}
 
 	// Initialize OpenAI client on mount
-	import { onMount } from 'svelte';
 	onMount(() => {
 		initializeOpenAI();
 	});
 </script>
 
-<div class="min-h-screen bg-gray-50 flex flex-col">
+<div class="h-screen bg-gray-50 flex flex-col overflow-hidden">
 	<!-- Header -->
 	<header class="bg-white shadow-sm border-b border-gray-200 px-3 sm:px-4 py-3">
 		<div class="max-w-4xl mx-auto">
@@ -205,7 +241,7 @@ Output rules:
                     Markdown UI Chat Demo
                 </h1>
 				<button
-					on:click={clearChat}
+					onclick={clearChat}
 					class="text-xs sm:text-sm px-2 sm:px-3 py-1 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition-colors flex-shrink-0"
 				>
 					Clear
@@ -231,7 +267,7 @@ Output rules:
 					GitHub
 				</a>
 				<button
-					on:click={() => showSystemMessage = true}
+					onclick={() => showSystemMessage = true}
 					class="text-xs sm:text-sm px-2 sm:px-3 py-1 bg-purple-100 text-purple-700 rounded-md hover:bg-purple-200 transition-colors"
 				>
 					System
@@ -248,20 +284,20 @@ Output rules:
 				<h2 class="text-lg font-semibold mb-4">Edit System Message</h2>
 				<textarea
 					value={getSystemMessage()}
-					on:input={(e) => updateSystemMessage((e.target as HTMLTextAreaElement).value)}
+					oninput={(e) => updateSystemMessage((e.target as HTMLTextAreaElement).value)}
 					placeholder="Enter system message (e.g., 'You are a helpful AI assistant.')"
 					class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-vertical flex-1 text-sm"
 					rows="8"
 				></textarea>
 				<div class="flex flex-col sm:flex-row gap-2 mt-4 flex-shrink-0">
 					<button
-						on:click={() => showSystemMessage = false}
+						onclick={() => showSystemMessage = false}
 						class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
 					>
 						Save
 					</button>
 					<button
-						on:click={() => showSystemMessage = false}
+						onclick={() => showSystemMessage = false}
 						class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors sm:flex-initial"
 					>
 						Cancel
@@ -272,9 +308,9 @@ Output rules:
 	{/if}
 
 	<!-- Main Content -->
-	<main class="flex-1 flex flex-col max-w-4xl mx-auto w-full pb-20 sm:pb-24">
+	<main class="flex-1 flex flex-col max-w-4xl mx-auto w-full overflow-hidden">
 		<!-- Messages Container -->
-		<div bind:this={messagesContainer} class="flex-1 overflow-y-auto px-3 sm:px-4 py-4">
+		<div bind:this={messagesContainer} class="flex-1 overflow-y-auto px-3 sm:px-4 py-4 pb-20 sm:pb-24">
 			{#if messages.filter(m => m.role !== 'system').length === 0}
 				<div class="text-center text-gray-500 mt-8">
 					<p class="text-lg mb-2">Welcome to markdown-ui-chat!</p>
@@ -296,7 +332,7 @@ Output rules:
 						<div class="flex flex-col {message.role === 'user' ? 'items-end' : 'items-start'} flex-1 min-w-0">
 							<div class="px-3 sm:px-4 py-2 rounded-lg {message.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white text-gray-900 shadow-sm border border-gray-200'} relative w-full break-words text-sm sm:text-base">
 								<MarkdownUI 
-                                    html={marked.parse(message.content)} 
+                                    html={message.parsedHtml || marked.parse(message.content)} 
                                     onwidgetevent={handleWidgetEvent} 
                                 />
 								
@@ -329,17 +365,41 @@ Output rules:
 	<!-- Floating Input Area -->
 	<div class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-3 sm:px-4 py-3 sm:py-4 z-40 safe-area-inset-bottom">
 		<div class="max-w-4xl mx-auto">
+			<!-- Suggestion Buttons -->
+			{#if showSuggestions}
+				<div class="mb-3 flex flex-wrap gap-2 justify-center">
+					<button 
+						onclick={() => handleSuggestionClick("Who is the cutest cat?")}
+						class="px-3 py-2 bg-blue-50 text-blue-700 text-sm rounded-md hover:bg-blue-100 transition-colors border border-blue-200"
+					>
+						Cutest cat?
+					</button>
+					<button 
+						onclick={() => handleSuggestionClick("Show me coding tips")}
+						class="px-3 py-2 bg-green-50 text-green-700 text-sm rounded-md hover:bg-green-100 transition-colors border border-green-200"
+					>
+						Coding tips
+					</button>
+					<button 
+						onclick={() => handleSuggestionClick("Recommend me some music")}
+						class="px-3 py-2 bg-purple-50 text-purple-700 text-sm rounded-md hover:bg-purple-100 transition-colors border border-purple-200"
+					>
+						Music recommendation
+					</button>
+				</div>
+			{/if}
+			
 			<div class="flex gap-2 items-end">
 				<textarea
 					bind:value={inputMessage}
-					on:keydown={handleKeyPress}
+					onkeydown={handleKeyPress}
 					placeholder="Type your message... (Enter to send)"
 					class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none text-sm sm:text-base min-h-[40px] max-h-32"
 					rows="1"
 					disabled={isLoading || isStreaming}
 				></textarea>
 				<button
-					on:click={sendMessage}
+					onclick={sendMessage}
 					disabled={!inputMessage.trim() || isLoading || isStreaming}
 					class="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 sm:gap-2 flex-shrink-0 text-sm sm:text-base min-h-[40px]"
 				>
