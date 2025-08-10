@@ -67,10 +67,8 @@ Output rules:
 	let inputMessage = '';
 	let isLoading = false;
 	let isStreaming = false;
-	let apiKey = '';
-	let showApiKeyInput = true;
 	let showSystemMessage = false;
-	let openai: OpenAI | null = null;
+	let openai: OpenAI;
 	let streamingMessageId = '';
 	let messagesContainer: HTMLDivElement;
 
@@ -100,16 +98,16 @@ Output rules:
 	}
 
 	function initializeOpenAI() {
-		if (apiKey.trim()) {
-			openai = new OpenAI({
-				apiKey: apiKey,
-				dangerouslyAllowBrowser: true
-			});
-		}
+		openai = new OpenAI({
+			apiKey: 'dummy-key',
+			// baseURL: 'http://localhost:3010',
+			baseURL: 'https://llm-proxy-735482512776.us-west1.run.app',
+			dangerouslyAllowBrowser: true
+		});
 	}
 
 	async function sendMessage() {
-		if (!inputMessage.trim() || !apiKey.trim() || isLoading || isStreaming || !openai) return;
+		if (!inputMessage.trim() || isLoading || isStreaming) return;
 
 		const userMessage: ChatMessage = {
 			id: crypto.randomUUID(),
@@ -185,110 +183,76 @@ Output rules:
 		}
 	}
 
-	function saveApiKey() {
-		if (apiKey.trim()) {
-			showApiKeyInput = false;
-			localStorage.setItem('openai_api_key', apiKey);
-			initializeOpenAI();
-		}
-	}
 
 	function clearChat() {
 		messages = messages.filter(m => m.role === 'system');
 	}
 
-	// Load API key from localStorage on mount
+	// Initialize OpenAI client on mount
 	import { onMount } from 'svelte';
 	onMount(() => {
-		const savedApiKey = localStorage.getItem('openai_api_key');
-		if (savedApiKey) {
-			apiKey = savedApiKey;
-			showApiKeyInput = false;
-			initializeOpenAI();
-		}
+		initializeOpenAI();
 	});
 </script>
 
 <div class="min-h-screen bg-gray-50 flex flex-col">
 	<!-- Header -->
-	<header class="bg-white shadow-sm border-b border-gray-200 px-4 py-3">
-		<div class="max-w-4xl mx-auto flex items-center justify-between">
-			<h1 class="text-xl font-semibold text-gray-900">Markdown UI Chat</h1>
-			<div class="flex items-center gap-2">
+	<header class="bg-white shadow-sm border-b border-gray-200 px-3 sm:px-4 py-3">
+		<div class="max-w-4xl mx-auto">
+			<div class="flex items-center justify-between">
+				<h1 class="text-lg sm:text-xl font-semibold text-gray-900 truncate">
+                    Markdown UI Chat
+                </h1>
+				<button
+					on:click={clearChat}
+					class="text-xs sm:text-sm px-2 sm:px-3 py-1 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition-colors flex-shrink-0"
+				>
+					Clear
+				</button>
+			</div>
+			
+			<!-- Mobile-friendly button row -->
+			<div class="flex flex-wrap items-center gap-2 mt-2">
+                <a
+					target="_blank"
+					rel="noopener noreferrer"
+					href="https://markdown-ui.blueprintlab.io"
+					class="text-xs sm:text-sm px-2 sm:px-3 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+				>
+					Markdown UI
+				</a>
 				<a
 					target="_blank"
 					rel="noopener noreferrer"
 					href="https://github.com/BlueprintDesignLab/markdown-ui/"
-					class="text-sm px-3 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+					class="text-xs sm:text-sm px-2 sm:px-3 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
 				>
-					Markdown UI Github
+					GitHub
 				</a>
 				<button
 					on:click={() => showSystemMessage = true}
-					class="text-sm px-3 py-1 bg-purple-100 text-purple-700 rounded-md hover:bg-purple-200 transition-colors"
+					class="text-xs sm:text-sm px-2 sm:px-3 py-1 bg-purple-100 text-purple-700 rounded-md hover:bg-purple-200 transition-colors"
 				>
-					System Message
-				</button>
-				<button
-					on:click={() => showApiKeyInput = true}
-					class="text-sm px-3 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
-				>
-					{apiKey ? 'Change API Key' : 'Set API Key'}
-				</button>
-                
-				<button
-					on:click={clearChat}
-					class="text-sm px-3 py-1 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition-colors"
-				>
-					Clear Chat
+					System
 				</button>
 			</div>
 		</div>
 	</header>
 
-	<!-- API Key Input Modal -->
-	{#if showApiKeyInput}
-		<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-			<div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-				<h2 class="text-lg font-semibold mb-4">Enter OpenAI API Key</h2>
-				<input
-					bind:value={apiKey}
-					type="password"
-					placeholder="sk-..."
-					class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-				>
-				<div class="flex gap-2 mt-4">
-					<button
-						on:click={saveApiKey}
-						class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50"
-						disabled={!apiKey.trim()}
-					>
-						Save
-					</button>
-					<button
-						on:click={() => showApiKeyInput = false}
-						class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
-					>
-						Cancel
-					</button>
-				</div>
-			</div>
-		</div>
-	{/if}
 
 	<!-- System Message Input Modal -->
 	{#if showSystemMessage}
-		<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-			<div class="bg-white rounded-lg p-6 w-full max-w-4xl mx-4">
+		<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+			<div class="bg-white rounded-lg p-4 sm:p-6 w-full max-w-4xl max-h-[90vh] flex flex-col">
 				<h2 class="text-lg font-semibold mb-4">Edit System Message</h2>
 				<textarea
 					value={getSystemMessage()}
 					on:input={(e) => updateSystemMessage((e.target as HTMLTextAreaElement).value)}
 					placeholder="Enter system message (e.g., 'You are a helpful AI assistant.')"
-					class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-vertical"
-					rows="12"
+					class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-vertical flex-1 text-sm"
+					rows="8"
 				></textarea>
-				<div class="flex gap-2 mt-4">
+				<div class="flex flex-col sm:flex-row gap-2 mt-4 flex-shrink-0">
 					<button
 						on:click={() => showSystemMessage = false}
 						class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
@@ -297,7 +261,7 @@ Output rules:
 					</button>
 					<button
 						on:click={() => showSystemMessage = false}
-						class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+						class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors sm:flex-initial"
 					>
 						Cancel
 					</button>
@@ -307,29 +271,29 @@ Output rules:
 	{/if}
 
 	<!-- Main Content -->
-	<main class="flex-1 flex flex-col max-w-4xl mx-auto w-full pb-24">
+	<main class="flex-1 flex flex-col max-w-4xl mx-auto w-full pb-20 sm:pb-24">
 		<!-- Messages Container -->
-		<div bind:this={messagesContainer} class="flex-1 overflow-y-auto px-4 py-4">
+		<div bind:this={messagesContainer} class="flex-1 overflow-y-auto px-3 sm:px-4 py-4">
 			{#if messages.filter(m => m.role !== 'system').length === 0}
 				<div class="text-center text-gray-500 mt-8">
-					<p class="text-lg mb-2">Welcome to ChatGPT!</p>
-					<p class="text-sm">Start a conversation by typing a message below.</p>
+					<p class="text-lg mb-2">Welcome to markdown-ui-chat!</p>
+					<p class="text-sm px-4">Start a conversation by typing a message below.</p>
 				</div>
 			{/if}
 
 			{#each messages.filter(m => m.role !== 'system') as message (message.id)}
-				<div class="mb-6 flex {message.role === 'user' ? 'justify-end' : 'justify-start'}">
-					<div class="flex max-w-xs lg:max-w-2xl {message.role === 'user' ? 'flex-row-reverse' : 'flex-row'} gap-3">
+				<div class="mb-4 sm:mb-6 flex {message.role === 'user' ? 'justify-end' : 'justify-start'}">
+					<div class="flex w-full max-w-[85%] sm:max-w-xs lg:max-w-2xl {message.role === 'user' ? 'flex-row-reverse' : 'flex-row'} gap-2 sm:gap-3">
 						<!-- Avatar -->
 						<div class="flex-shrink-0">
-							<div class="w-8 h-8 rounded-full flex items-center justify-center {message.role === 'user' ? 'bg-blue-600 text-white' : 'bg-green-600 text-white'}">
+							<div class="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm {message.role === 'user' ? 'bg-blue-600 text-white' : 'bg-green-600 text-white'}">
 								{message.role === 'user' ? 'U' : 'AI'}
 							</div>
 						</div>
 						
 						<!-- Message Bubble -->
-						<div class="flex flex-col {message.role === 'user' ? 'items-end' : 'items-start'}">
-							<div class="px-4 py-2 rounded-lg {message.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white text-gray-900 shadow-sm border border-gray-200'} relative">
+						<div class="flex flex-col {message.role === 'user' ? 'items-end' : 'items-start'} flex-1 min-w-0">
+							<div class="px-3 sm:px-4 py-2 rounded-lg {message.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white text-gray-900 shadow-sm border border-gray-200'} relative w-full break-words text-sm sm:text-base">
 								<MarkdownUI 
                                     html={marked.parse(message.content)} 
                                     onwidgetevent={handleWidgetEvent} 
@@ -347,7 +311,7 @@ Output rules:
 									</div>
 								{/if}
 							</div>
-							<div class="text-xs text-gray-500 mt-1 px-2">
+							<div class="text-xs text-gray-500 mt-1 px-1 sm:px-2">
 								{message.timestamp.toLocaleTimeString()}
 								{#if isStreaming && message.id === streamingMessageId}
 									<span class="ml-2 text-blue-500">● Streaming</span>
@@ -362,32 +326,33 @@ Output rules:
 	</main>
 
 	<!-- Floating Input Area -->
-	<div class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-4 z-40">
+	<div class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-3 sm:px-4 py-3 sm:py-4 z-40 safe-area-inset-bottom">
 		<div class="max-w-4xl mx-auto">
-			<div class="flex gap-2">
+			<div class="flex gap-2 items-end">
 				<textarea
 					bind:value={inputMessage}
 					on:keydown={handleKeyPress}
-					placeholder="Type your message here... (Press Enter to send, Shift+Enter for new line)"
-					class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+					placeholder="Type your message... (Enter to send)"
+					class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none text-sm sm:text-base min-h-[40px] max-h-32"
 					rows="1"
-					disabled={!apiKey.trim() || isLoading || isStreaming}
+					disabled={isLoading || isStreaming}
 				></textarea>
 				<button
 					on:click={sendMessage}
-					disabled={!inputMessage.trim() || !apiKey.trim() || isLoading || isStreaming}
-					class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+					disabled={!inputMessage.trim() || isLoading || isStreaming}
+					class="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 sm:gap-2 flex-shrink-0 text-sm sm:text-base min-h-[40px]"
 				>
 					{#if isLoading}
-						<div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+						<div class="w-3 h-3 sm:w-4 sm:h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
 					{:else if isStreaming}
 						<div class="flex items-center gap-1">
-							<div class="w-2 h-2 bg-white rounded-full animate-bounce"></div>
-							<div class="w-2 h-2 bg-white rounded-full animate-bounce" style="animation-delay: 0.1s"></div>
-							<div class="w-2 h-2 bg-white rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+							<div class="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-white rounded-full animate-bounce"></div>
+							<div class="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-white rounded-full animate-bounce" style="animation-delay: 0.1s"></div>
+							<div class="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-white rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
 						</div>
 					{/if}
-					{isStreaming ? 'Streaming...' : 'Send'}
+					<span class="hidden sm:inline">{isStreaming ? 'Streaming...' : 'Send'}</span>
+					<span class="sm:hidden">{isStreaming ? '...' : 'Send'}</span>
 				</button>
 			</div>
 		</div>
