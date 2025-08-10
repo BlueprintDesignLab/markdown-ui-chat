@@ -270,7 +270,7 @@ Output rules:
 					onclick={() => showSystemMessage = true}
 					class="text-xs sm:text-sm px-2 sm:px-3 py-1 bg-purple-100 text-purple-700 rounded-md hover:bg-purple-200 transition-colors"
 				>
-					System
+					System Prompt
 				</button>
 			</div>
 		</div>
